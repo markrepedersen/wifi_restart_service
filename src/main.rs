@@ -1,4 +1,9 @@
-use std::{net::TcpStream, process::Command, thread, time::Duration};
+use std::{
+    net::{SocketAddr, TcpStream},
+    process::Command,
+    thread,
+    time::Duration,
+};
 
 fn restart_wifi() {
     Command::new("networksetup")
@@ -17,9 +22,9 @@ fn restart_wifi() {
 }
 
 fn main() {
+    let addr = SocketAddr::from(([172, 217, 14, 195], 80));
     loop {
-        if let Err(e) = TcpStream::connect("rustlang.org:80") {
-            println!("{}", e);
+        if let Err(_) = TcpStream::connect_timeout(&addr, Duration::from_secs(2)) {
             restart_wifi();
         }
 
