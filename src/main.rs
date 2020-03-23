@@ -2,11 +2,13 @@ use std::{
     io::Error,
     net::{SocketAddr, TcpStream, ToSocketAddrs},
     process::Command,
-    thread,
     time::Duration,
 };
 
-use tokio::time::timeout;
+use tokio::{
+    task::spawn_blocking,
+    time::{delay_for, timeout},
+};
 
 const TIMEOUT: Duration = Duration::from_secs(2);
 const RANDOM_HOST_NAME: &str = "google.ca:80";
@@ -29,21 +31,29 @@ fn restart_wifi() {
 }
 
 // Resolve host -> IP.
+// Runs blocking I/O inside a green thread so that I can
+// time out if resolving the URL takes too long.
 async fn resolve_host() -> Result<SocketAddr, Error> {
-    let mut addrs = RANDOM_HOST_NAME.to_socket_addrs()?;
-    Ok(addrs.next().unwrap())
+    let addr = spawn_blocking(move || {
+        RANDOM_HOST_NAME
+            .to_socket_addrs()
+            .and_then(|mut iter| Ok(iter.next().unwrap()))
+    })
+    .await?;
+    Ok(addr.unwrap())
 }
 
-// Check if can establish TCP connection to machine.
-async fn test_online_status() -> Result<(), Error> {
-    if let Ok(ip) = timeout(TIMEOUT, resolve_host()).await? {
-        TcpStream::connect_timeout(&ip, TIMEOUT)
-            .or_else(|_| Err(restart_wifi()))
-            .unwrap();
-    } else {
-        restart_wifi();
-    }
-    Ok(())
+// Check if establishing TCP connection is possible.
+async fn test_online_status() {
+    timeout(TIMEOUT, resolve_host())
+        .await
+        .and_then(|ip| {
+            // Timeout has not occurred.
+            let res =
+                TcpStream::connect_timeout(&ip.unwrap(), TIMEOUT).or_else(|_| Err(restart_wifi()));
+            Ok(res)
+        })
+        .or_else(|_| Err(restart_wifi()));
 }
 
 // DNS may be successful if cached, therefore, a successful resolution does not mean a valid internet connection.
@@ -51,7 +61,7 @@ async fn test_online_status() -> Result<(), Error> {
 #[tokio::main]
 async fn main() {
     loop {
-        test_online_status().await.unwrap();
-        thread::sleep(TIMEOUT);
+        test_online_status().await;
+        delay_for(TIMEOUT).await;
     }
 }

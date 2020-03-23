@@ -5,4 +5,4 @@ authors = ["markpedersen"]
 edition = "2018"
 
 [dependencies]
-tokio = { version = "0.2.13", features = ["time", "rt-threaded", "macros"] }
+tokio = { version = "0.2.13", features = ["time", "rt-threaded", "macros", "blocking"] }
